@@ -1,5 +1,12 @@
 dagster
 dagster-cloud
+pandas
+sqlalchemy
+nba_api
+python-dotenv
+openai<1.0.0
+pymongo
+qdrant-client~=1.10
 
 [dev]
 dagster-webserver

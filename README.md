@@ -18,13 +18,68 @@ dagster dev
 
 Open http://localhost:3000 with your browser to see the project.
 
-You can start writing assets in `nba_etl/assets.py`. The assets are automatically loaded into the Dagster code location as you define them.
+Key components added:
+
+- Assets: `all_players`, `all_teams`, `league_player_stats`, `player_profiles`, `player_embeddings_openai`
+- Job: `moneyball_nba` (profiles from league stats + static metadata)
+- IO Managers: Postgres (tables) and Mongo (embeddings). Optional: Qdrant later.
+
+Quickstart (Moneyball pipeline):
+
+1) Install editable package and extras
+
+```bash
+pip install -e ".[dev]"
+```
+
+2) Configure environment in `nba_etl/.env` or shell:
+
+```bash
+# Postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=nba
+
+# Mongo (optional for embeddings)
+MONGO_HOST=localhost
+MONGO_PORT=27017
+MONGO_DB=nba
+MONGO_COLLECTION=player_embeddings
+
+# OpenAI (optional for embeddings asset)
+OPENAI_API_KEY=sk-...
+```
+
+3) Run Dagster locally
+
+```bash
+dagster dev
+```
+
+4) In the UI, materialize the job `moneyball_nba` to build `league_player_stats` and `player_profiles`.
+
+Optional run config example (limit API usage during dev):
+
+```yaml
+ops:
+	league_player_stats:
+		config:
+			season: "2024-25"
+			max_players: 150
+```
+
+Notes:
+
+- `league_player_stats` uses `nba_api` game logs for season="2024-25". Adjust as needed.
+- `player_embeddings_openai` writes to Mongo; set the API key to enable.
 
 ## Development
 
 ### Adding new Python dependencies
 
-You can specify new Python dependencies in `setup.py`.
+You can specify new Python dependencies in `pyproject.toml`.
 
 ### Unit testing
 

@@ -7,6 +7,14 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
     "dagster",
     "dagster-cloud",
+    "pandas",
+    "sqlalchemy",
+    "nba_api",
+    "python-dotenv",
+    "openai<1.0.0",  # compatible with current embedding code path
+    "pymongo",
+    # optional vector DB for later
+    "qdrant-client~=1.10",
 ]
 
 [project.optional-dependencies]
