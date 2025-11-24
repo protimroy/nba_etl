@@ -16,8 +16,10 @@ setup(
         "superduper",
         "pandas",
         "python-dotenv",
-        "superduper-framework"
-
+        "superduper-framework",
+        "requests",
+        "psycopg2-binary",
+        "pymongo",
     ],
     extras_require={
         "dev": ["dagster-webserver", "pytest"],

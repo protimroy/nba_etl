@@ -9,11 +9,15 @@ from dagster import Definitions, define_asset_job, AssetSelection
 #   – static assets
 from nba_etl.assets.static import all_players, all_teams
 #   – core moneyball assets
-from nba_etl.assets.moneyball import league_player_stats, player_profiles
+from nba_etl.assets.nba_analytics_transformations import league_player_stats, player_profiles
 #   – embeddings
 from nba_etl.assets.embeddings import player_embeddings_openai
 #   – dynamic‐endpoint factory (optional, keeps the project agentic/modular)
 from nba_etl.assets.factories.dynamic_factory import get_dynamic_assets
+#   – new source framework
+from nba_etl.sources.balldontlie_source import BallDontLieSource
+from nba_etl.assets.factories.source_asset_factory import build_assets_for_source
+
 #   – IO managers
 from nba_etl.resources.postgres_io_manager import postgres_io_manager
 from nba_etl.resources.mongo_io_manager import mongo_io_manager
@@ -37,6 +41,10 @@ auth = f"{mongo_user}:{mongo_pass}@" if mongo_user and mongo_pass else ""
 db_suffix = f"/{mongo_db}" if mongo_db else ""
 MONGO_CONNECTION_STR = f"mongodb://{auth}{mongo_host}:{mongo_port}{db_suffix}"
 
+# Initialize Sources
+bdl_source = BallDontLieSource(api_key=os.getenv("BDL_API_KEY", "demo"))
+bdl_assets = build_assets_for_source(bdl_source, endpoints=["players", "teams"])
+
 # Compose asset list
 all_assets = [
     # static
@@ -49,6 +57,8 @@ all_assets = [
     player_embeddings_openai,
     # dynamic endpoints keep it agentic/extendable
     *get_dynamic_assets(),
+    # new source assets
+    *bdl_assets,
 ]
 
 # Define a focused job for the Moneyball pipeline (NBA)
@@ -70,7 +80,6 @@ defs = Definitions(
         "mongo_io_manager": mongo_io_manager.configured({
             "connection_str": MONGO_CONNECTION_STR,
             "db_name": mongo_db or "nba",
-            "collection_name": os.getenv("MONGO_COLLECTION", "player_embeddings"),
         }),
     },
 )

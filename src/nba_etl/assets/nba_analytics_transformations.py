@@ -5,14 +5,17 @@ import pandas as pd
 from dagster import asset, AssetIn
 from nba_api.stats.static import players as static_players
 from nba_api.stats.endpoints import playergamelog
+import time
 
 
 @asset(
     io_manager_key="postgres_io_manager",
     name="league_player_stats",
+    key_prefix=["nba_api"],
     config_schema={
         "season": str,  # e.g. "2024-25"
         "max_players": int,  # limit to avoid API rate issues in dev
+        "sleep_seconds": float,  # simple rate-limiting between API calls
     },
 )
 def league_player_stats(context) -> pd.DataFrame:
@@ -22,6 +25,7 @@ def league_player_stats(context) -> pd.DataFrame:
     """
     season = context.op_config.get("season") or "2024-25"
     max_players = int(context.op_config.get("max_players") or 200)
+    sleep_seconds = float(context.op_config.get("sleep_seconds") or 0.8)
 
     active_players = [p for p in static_players.get_players() if p.get("is_active")]
     if max_players > 0:
@@ -33,6 +37,8 @@ def league_player_stats(context) -> pd.DataFrame:
             gid = p["id"]
             gl = playergamelog.PlayerGameLog(player_id=gid, season=season).get_data_frames()[0]
             if gl.empty:
+                context.log.debug(f"No gamelog for {p['full_name']} ({gid}) in {season}")
+                time.sleep(sleep_seconds)
                 continue
             # Aggregate simple per-game averages
             keep_cols = [
@@ -42,9 +48,11 @@ def league_player_stats(context) -> pd.DataFrame:
             agg["player_id"] = gid
             agg["player_name"] = p["full_name"]
             rows.append(agg)
-        except Exception:
-            # Keep going even if some players fail
-            continue
+        except Exception as e:
+            context.log.warning(f"Failed gamelog for {p.get('full_name')} ({p.get('id')}): {e}")
+        finally:
+            # naive pacing to reduce rate-limit issues
+            time.sleep(sleep_seconds)
 
     if not rows:
         return pd.DataFrame()
@@ -66,13 +74,20 @@ def league_player_stats(context) -> pd.DataFrame:
     df["3P%"] = fg3m.divide(fg3a.replace(0.0, math.nan))
     df["3P%"] = df["3P%"].fillna(0.0)
 
+    # Sanitize column names for SQL sinks
+    df = df.rename(columns={"3P%": "three_p_pct", "TS%": "ts_pct"})
+
     return df
 
 
 @asset(
-    ins={"league_player_stats": AssetIn("league_player_stats"), "all_players": AssetIn("all_players")},
+    ins={
+        "league_player_stats": AssetIn(key=["nba_api", "league_player_stats"]),
+        "all_players": AssetIn(key=["nba_api", "all_players"]),
+    },
     io_manager_key="postgres_io_manager",
     name="player_profiles",
+    key_prefix=["nba_api"],
 )
 def player_profiles(league_player_stats: pd.DataFrame, all_players: pd.DataFrame) -> pd.DataFrame:
     """
@@ -86,6 +101,6 @@ def player_profiles(league_player_stats: pd.DataFrame, all_players: pd.DataFrame
     cols = [
         "player_id", "player_name", "full_name", "team_id",
         "PTS", "REB", "AST", "STL", "BLK", "TOV", "PLUS_MINUS",
-        "FGM", "FGA", "FTM", "FTA", "FG3M", "FG3A", "3P%", "TS%",
+        "FGM", "FGA", "FTM", "FTA", "FG3M", "FG3A", "three_p_pct", "ts_pct",
     ]
     return df[[c for c in cols if c in df.columns]]
